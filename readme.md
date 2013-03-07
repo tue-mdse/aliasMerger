@@ -17,7 +17,7 @@ On the augmented document-term matrix, the [tf-idf](http://en.wikipedia.org/wiki
 
 After applying the tf-idf model, [Latent Semantic Analysis](http://en.wikipedia.org/wiki/Latent_semantic_analysis) (LSA) is applied to the data. LSA basically computes the [Singular Value Decomposition](http://en.wikipedia.org/wiki/Singular_value_decomposition) (SVD) and applies a `k`-rank reduction. The rank reduction removes the least significant dimensions (terms), which is believed to remove noise from the data set.
 
-Finally, the similarity between the documents is computed using the [cosine similarity][7](http://en.wikipedia.org/wiki/Cosine_similarity). This similarity is returned if it is above a given threshold.
+Finally, the similarity between the documents is computed using the [cosine similarity](http://en.wikipedia.org/wiki/Cosine_similarity). This similarity is returned if it is above a given threshold.
 
 ### Dependencies
 
