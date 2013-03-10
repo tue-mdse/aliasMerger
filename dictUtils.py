@@ -68,7 +68,7 @@ class MyDict:
 				dict1 = pickle.load(fdict, encoding=encod)
 			else:
 				dict1 = pickle.load(fdict)
-			print "Loaded dictionary from %s" % path
+			#print "Loaded dictionary from %s" % path
 			fdict.close()
 			self.data = dict1
 	
@@ -105,7 +105,7 @@ class MyDict:
 	def save(self, path):
 		fdict = open(path, "w")
 		pickle.dump(self.data, fdict)
-		print "Wrote dictionary to %s" % path
+		#print "Wrote dictionary to %s" % path
 		fdict.close()
 		
 	def saveAsCSV(self, path):

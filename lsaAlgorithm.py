@@ -22,7 +22,7 @@ from scipy.sparse import coo_matrix
 from dictUtils import MyDict
 import itertools
 from filters import *
-#import csv
+import csv
 from time import clock
 #from Levenshtein import *
 import Levenshtein #ez_setup.py python-Levenshtein
@@ -37,6 +37,8 @@ from ctypes import Structure, c_double
 import time, random
 import cProfile
 import gc
+import os
+from unicodeMagic import UnicodeReader, UnicodeWriter
 #from scipy.spatial.distance import pdist
 #from scipy.spatial import distance
 #from numpy.linalg import inv
@@ -50,7 +52,7 @@ class LSAAlgo():
 	In Proc. 28th IEEE International Conference on Software Maintenance, pp 592-595.
 	"""
 	
-	def __init__(self, data, parameters, dataDir, dataSaveDir, numberOfProcesses=1, runProfiler=False, profilerOutputDir='profilerOutput', gensimLogging=False):
+	def __init__(self, data, parameters, dataDir, dataSaveDir, resultsFileName='results.csv', resultsHumanReadable=True, numberOfProcesses=1, runProfiler=False, profilerOutputDir='profilerOutput', gensimLogging=False, progressLogging=True):
 		"""
 		Constructor:
 		- data is a MyDict object, key = integer id, value = (name, email) tuple.
@@ -66,6 +68,8 @@ class LSAAlgo():
 		self.runProfiler = runProfiler
 		self.profilerOutputDir = profilerOutputDir
 		
+		self.documentsFileName = 'documents'
+		self.directLookupFileName = 'directLookup'
 		self.dictionaryFileName = 'dictionary'
 		self.originalCorpusFileName = 'corpus'
 		self.termCorpusFileName = 'termCorpus'
@@ -76,11 +80,14 @@ class LSAAlgo():
 		
 		self.dataProcessingDir = 'processing'
 		
-		self.resultsFileName = 'results'
+		self.resultsFileName = resultsFileName
+		self.resultsHumanReadable = resultsHumanReadable
 		
 		if gensimLogging:
 			import logging
 			logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
+		
+		self.progressLogging = progressLogging
 		
 	def worker(self, queue, core_nr, dictionary, levThr):
 	
@@ -220,9 +227,10 @@ class LSAAlgo():
 			corpus = corpora.MmCorpus('%s/%s/%s_%i.mm' % (self.dataDir, self.dataSaveDir, self.termCorpusFileName, i))
 			#corporaList.append(corpus)
 			# (current termId, current index in corpus, corpus)
-			termId = [id for (id, sim) in corpus[0] if sim == 1.0][0]
-			corporaDict[i] = (termId, 0, corpus, len(corpus))
-			totalLen += len(corpus)
+			if len(corpus) > 0:
+				termId = [id for (id, sim) in corpus[0] if sim == 1.0][0]
+				corporaDict[i] = (termId, 0, corpus, len(corpus))
+				totalLen += len(corpus)
 			
 		while 1:
 			isDone = False
@@ -314,19 +322,36 @@ class LSAAlgo():
 		index_fname = levCorpus_writer.fname + '.index'
 		utils.pickle(offsets, index_fname)
 		
-	def writeResults(self, index, reverseLookup, simThr):
-		f = open('%s/%s/%s.csv' % (self.dataDir, self.dataSaveDir, self.resultsFileName), 'wb')
-		writer = UnicodeWriter(f)
+	def writeResults(self, index, reverseLookup, documents, simThr):
+		f = open('%s/%s/%s' % (self.dataDir, self.dataSaveDir, self.resultsFileName), 'wb')
+		writer = csv.writer(f, delimiter=";")
 
-		for docIdx1, simi in enumerate(index):
-			aliases1 = reverseLookup[docIdx1]
-			for docIdx2, val in enumerate(simi):
-				if docIdx1 > docIdx2:
+		if self.resultsHumanReadable:
+			for docIdx1, simi in enumerate(index):
+				aliases1 = reverseLookup[docIdx1]
+				for docIdx2, val in enumerate(simi):
+					if docIdx1 > docIdx2:
+						if val >= simThr:
+							aliases2 = reverseLookup[docIdx2]
+							for id1 in aliases1:
+								for id2 in aliases2:
+									writer.writerow([str(id1)]+list(self.nameEmailData[id1])+[str(id2)]+list(self.nameEmailData[id2])+[str(val)])
+		else:
+			writer.writerow(['leftid', 'rightid', 'left','right','textLeft','textRight','sim'])
+			for docIdx1, simi in enumerate(index):
+				aliases1 = reverseLookup[docIdx1]
+				doc1 = documents[docIdx1]
+				for docIdx2, val in enumerate(simi):
+					#if docIdx1 > docIdx2:
 					if val >= simThr:
 						aliases2 = reverseLookup[docIdx2]
+						doc2 = documents[docIdx2]
 						for id1 in aliases1:
+							tuple1 = self.nameEmailData[id1]
 							for id2 in aliases2:
-								writer.writerow([str(id1)]+list(self.nameEmailData[id1])+[str(id2)]+list(self.nameEmailData[id2])+[str(val)])
+								tuple2 = self.nameEmailData[id2]
+								#writer.writerow([str(id1)]+list(self.nameEmailData[id1])+[str(id2)]+list(self.nameEmailData[id2])+[str(val)])
+								writer.writerow([str(id1), str(id2), tuple1, tuple2, doc1, doc2, str(val)])
 										
 		f.close()
 		
@@ -427,7 +452,8 @@ class LSAAlgo():
 				
 		numDocuments = len(documents.keys())
 		numTerms = len(allTerms)
-		print "Initial pass: %6.3f seconds (%d terms, %d documents)" % ((end - start), numTerms, numDocuments)
+		if self.progressLogging:
+			print "Initial pass: %6.3f seconds (%d terms, %d documents)" % ((end - start), numTerms, numDocuments)
 		
 		#Make sure that dataDir/saveDataDir exists.
 		if not os.path.exists('%s/%s' % (self.dataDir, self.dataSaveDir)):
@@ -440,6 +466,10 @@ class LSAAlgo():
 			#Make sure that dataDir/saveDataDir/profilerOutputDir exists.
 			if not os.path.exists('%s/%s/%s' % (self.dataDir, self.dataSaveDir, self.profilerOutputDir)):
 				os.makedirs('%s/%s/%s' % (self.dataDir, self.dataSaveDir, self.profilerOutputDir))
+				
+		#Save the documents MyDict and directLookup MyDict for later reference
+		documents.save('%s/%s/%s.dict' % (self.dataDir, self.dataSaveDir, self.documentsFileName))
+		directLookup.save('%s/%s/%s.dict' % (self.dataDir, self.dataSaveDir, self.directLookupFileName))
 		
 		#Build the dictionary and corpus on disk from the documents.
 		texts = [documents[key] for key in documents.keys()]
@@ -449,14 +479,16 @@ class LSAAlgo():
 		corpora.MmCorpus.serialize('%s/%s/%s.mm' % (self.dataDir, self.dataSaveDir, self.originalCorpusFileName), corpus)
 		
 		# Precompute levenshtein distances between all terms on all cpu cores
-		print 'Starting computation of levenshtein...'
+		if self.progressLogging:
+			print 'Starting computation of levenshtein...'
 		start = clock()
 		if self.runProfiler:
 			cProfile.runctx('self.precomputeLevenshteinDistanceBetweenAllTerms(numTerms, dictionary, levThr)', globals(), locals(), '%s/%s/%s/computeTermCorpusChunks' % (self.dataDir, self.dataSaveDir, self.profilerOutputDir))
 		else:
 			self.precomputeLevenshteinDistanceBetweenAllTerms(numTerms, dictionary, levThr)
 		end = clock()
-		print 'Done computing levenshtein: %6.3f seconds' % (end - start)
+		if self.progressLogging:
+			print 'Done computing levenshtein: %6.3f seconds' % (end - start)
 		
 		# Merge separate MmCorpus files
 		start = clock()
@@ -465,7 +497,8 @@ class LSAAlgo():
 		else:
 			self.mergeIntoTermCorpus()
 		end = clock()
-		print 'Done merging corpora to termCorpus: %6.3f seconds' % (end - start)
+		if self.progressLogging:
+			print 'Done merging corpora to termCorpus: %6.3f seconds' % (end - start)
 		
 		# Create levCorpus from corpus.mm and termCorpus.mm.
 		start = clock()
@@ -474,7 +507,8 @@ class LSAAlgo():
 		else:
 			self.createLevenshteinCorpus()
 		end = clock()
-		print 'Done creating levCorpus from corpus and termCorpus: %6.3f seconds' % (end - start)
+		if self.progressLogging:
+			print 'Done creating levCorpus from corpus and termCorpus: %6.3f seconds' % (end - start)
 		
 		corpus_disk = corpora.MmCorpus('%s/%s/%s.mm' % (self.dataDir, self.dataSaveDir, self.levenshteinCorpusFileName))
 		
@@ -484,38 +518,46 @@ class LSAAlgo():
 		tfidf.save('%s/%s/%s' % (self.dataDir, self.dataSaveDir, self.tfidfModelFileName))
 		corpus_tfidf = tfidf[corpus_disk]
 		end = clock()
-		print "Inverse document frequency: %6.3f seconds" % (end - start)
+		if self.progressLogging:
+			print "Inverse document frequency: %6.3f seconds" % (end - start)
 		
 		""" Next up is applying the LSI model on top of the TFIDF model. """
 		start = clock()
 		number_topics = len(corpus_disk)*k
-		lsi = models.LsiModel(corpus_tfidf, id2word=dictionary, num_topics=number_topics)
+		try:
+			lsi = models.LsiModel(corpus_tfidf, id2word=dictionary, num_topics=number_topics)
+		except:
+			print 'Failed to compute the LSI model. (SVD did not converge?)'
+			return
 		lsi.save('%s/%s/%s' % (self.dataDir, self.dataSaveDir, self.lsiModelFileName))
 		corpus_lsi = lsi[corpus_tfidf]
 		end = clock()
-		print "LSI model: %6.3f seconds" % (end - start)
+		if self.progressLogging:
+			print "LSI model: %6.3f seconds" % (end - start)
 		
 		""" Finally, we run the cosine similarity on the matrix. """
 		start = clock()
 		index = similarities.docsim.Similarity('%s/%s/%s/%s' % (self.dataDir, self.dataSaveDir, self.dataProcessingDir, self.similarityIndexFileName), corpus_lsi, number_topics)
 		index.save('%s/%s/%s' % (self.dataDir, self.dataSaveDir, self.similarityIndexFileName))
 		end = clock()
-		print "Similarities index: %6.3f seconds" % (end - start)
+		if self.progressLogging:
+			print "Similarities index: %6.3f seconds" % (end - start)
 		
 		"""Output results."""
 		start = clock()
 		if self.runProfiler:
-			cProfile.runctx('self.writeResults(index, reverseLookup)', globals(), locals(), '%s/%s/%s/createLevenshteinCorpus' % (self.dataDir, self.dataSaveDir, self.profilerOutputDir))
+			cProfile.runctx('self.writeResults(index, reverseLookup, documents, simThr)', globals(), locals(), '%s/%s/%s/createLevenshteinCorpus' % (self.dataDir, self.dataSaveDir, self.profilerOutputDir))
 		else:
-			self.writeResults(index, reverseLookup, simThr)
+			self.writeResults(index, reverseLookup, documents, simThr)
 		end = clock()
-		print "Writing results: %6.3f seconds" % (end - start)
+		if self.progressLogging:
+			print "Writing results: %6.3f seconds" % (end - start)
 				
 		#print key, dictionary[key] :: 830, grenier
 		
 		#for key in documents.keys():
 		#	print key, documents[key]
-		exit()
+		return
 		
 		#=====================================================================================================================================================================
 		
@@ -766,18 +808,19 @@ if __name__=="__main__":
 	# Choose dataset
 	#dataset = 'aliases2'
 	dataset = 'gnome'
+	dataset = 'icsm'
 	
 	# Choose dataset size
-	#datasetsize = 'full'
-	datasetsize = 'sample'
+	datasetsize = 'full'
+	#datasetsize = 'sample'
 	
+	nameEmailData = MyDict()
 	if dataset == 'aliases2':
 		f = open(os.path.join(dataPath, "aliases2.csv"), "rb")
 	#	f = open(os.path.join(dataPath, "testData2.csv"), "rb")
 		reader = UnicodeReader(f)
 		header = reader.next()
 			
-		nameEmailData = MyDict()
 		for row in reader:
 			try:
 				idx = int(row[0])
@@ -793,7 +836,6 @@ if __name__=="__main__":
 		import email.header
 	
 		emailAddressToUniqueNames = MyDict(os.path.join(dataPath,'emailAddressToUniqueNamesBlacklisted.dict'))
-		nameEmailData = MyDict()
 		i = 0
 		emailAddresses = [emailAddress for emailAddress in emailAddressToUniqueNames.keys() if len(emailAddress) > 1]
 		for emailAddress in emailAddresses:
@@ -805,6 +847,21 @@ if __name__=="__main__":
 				nameEmailData[i] = (name, emailAddress)
 				i += 1
 		print 'Using the GNOME Mailing List data set...'
+	elif dataset == 'icsm':
+		itIdx = 8
+		f = open(os.path.join(dataPath, 'icsmData', 'training_%d.csv' % itIdx), 'rb')
+		reader = UnicodeReader(f)
+		idx = 0
+		for row in reader:
+			try:
+				alias = row[0]
+				email = unspam(row[1])
+				nameEmailData[idx] = (alias, email)
+			except:
+				print row
+			idx += 1
+		f.close()
+		print 'Using the ICSM`12 ERA data set...'
 
 	data = MyDict()
 	if datasetsize == 'sample':
@@ -844,7 +901,7 @@ if __name__=="__main__":
 	
 	dataSaveDir = dataset + datasetsize # {aliases2/gnome} + {sample/full} (e.g. gnomefull)
 	
-	lsaAlgo = LSAAlgo(data, parameters, dataDir='../data', dataSaveDir=dataSaveDir, numberOfProcesses=2, runProfiler=False, profilerOutputDir='profilerOutput', gensimLogging=False)
+	lsaAlgo = LSAAlgo(data, parameters, dataDir='../data', dataSaveDir=dataSaveDir, resultsFileName='results.csv', resultsHumanReadable=True, numberOfProcesses=2, runProfiler=False, profilerOutputDir='profilerOutput', gensimLogging=False)
 	lsaAlgo.run()
 	end = clock()
 	print "== Total time: %6.3f seconds" % (end - start)
