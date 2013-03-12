@@ -538,6 +538,8 @@ class LSAAlgo():
 		start = clock()
 		number_topics = len(corpus_disk)*k
 		try:
+			#Occasionally computing the SVD fails.
+			#http://projects.scipy.org/numpy/ticket/990
 			lsi = models.LsiModel(corpus_tfidf, id2word=dictionary, num_topics=number_topics)
 		except:
 			print 'Failed to compute the LSI model. (SVD did not converge?)'
