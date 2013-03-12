@@ -199,7 +199,7 @@ class ICSMTests():
 	def runTesting(self, dataPath='../data/icsmData', resultsPath='../data/icsmResults', nrIterations=10, nrProcesses=1):
 		#For each iteration, load the file with the results for each parameter combination. (../data/icsmResults/resultsTraining_0.csv)
 		#Grab the parameter combination with the highest f-measure.
-		#Run the LSA algorithm on all testing sets for this iteration with the selected parameter combination. (../data/icsmData/test_0.csv) or (for 0 <= i <= 9 :: ../data/icsmData/test_0_i.csv)?
+		#Run the LSA algorithm on all testing sets for this iteration with the selected parameter combination. (for 0 <= i <= 9 :: ../data/icsmData/test_0_i.csv)
 		#Write the results of the testing to file. (../data/icsmResults/resultsTesting_0.csv)
 		
 		#Make sure the resultsPath exists. If not, create it.
