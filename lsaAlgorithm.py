@@ -70,6 +70,7 @@ class LSAAlgo():
 		
 		self.documentsFileName = 'documents'
 		self.directLookupFileName = 'directLookup'
+		self.reverseLookupFileName = 'reverseLookup'
 		self.dictionaryFileName = 'dictionary'
 		self.originalCorpusFileName = 'corpus'
 		self.termCorpusFileName = 'termCorpus'
@@ -326,6 +327,7 @@ class LSAAlgo():
 		f = open('%s/%s/%s' % (self.dataDir, self.dataSaveDir, self.resultsFileName), 'wb')
 		writer = csv.writer(f, delimiter=";")
 
+		""" So far unimplemented.
 		if self.resultsHumanReadable:
 			for docIdx1, simi in enumerate(index):
 				aliases1 = reverseLookup[docIdx1]
@@ -336,13 +338,14 @@ class LSAAlgo():
 							for id1 in aliases1:
 								for id2 in aliases2:
 									writer.writerow([str(id1)]+list(self.nameEmailData[id1])+[str(id2)]+list(self.nameEmailData[id2])+[str(val)])
-		else:
-			writer.writerow(['leftid', 'rightid', 'left','right','textLeft','textRight','sim'])
-			for docIdx1, simi in enumerate(index):
-				aliases1 = reverseLookup[docIdx1]
-				doc1 = documents[docIdx1]
-				for docIdx2, val in enumerate(simi):
-					#if docIdx1 > docIdx2:
+		else:		
+		"""
+		writer.writerow(['leftid', 'rightid', 'left','right','textLeft','textRight','sim'])
+		for docIdx1, simi in enumerate(index):
+			aliases1 = reverseLookup[docIdx1]
+			doc1 = documents[docIdx1]
+			for docIdx2, val in enumerate(simi):
+				if docIdx1 > docIdx2:
 					if val >= simThr:
 						aliases2 = reverseLookup[docIdx2]
 						doc2 = documents[docIdx2]
@@ -352,6 +355,15 @@ class LSAAlgo():
 								tuple2 = self.nameEmailData[id2]
 								#writer.writerow([str(id1)]+list(self.nameEmailData[id1])+[str(id2)]+list(self.nameEmailData[id2])+[str(val)])
 								writer.writerow([str(id1), str(id2), tuple1, tuple2, doc1, doc2, str(val)])
+								
+			#Next to the combinations between the documents, we must not forget about the aliases that are within the same document.
+			#These aliases have been merged into the same document (e.g. by having an equal email address)
+			#Therefore these aliases have the same document string, leading to a similarity of 1.0.
+			for id1, id2 in itertools.combinations(aliases1, 2):
+				tuple1 = self.nameEmailData[id1]
+				tuple2 = self.nameEmailData[id2]
+				writer.writerow([str(id1), str(id2), tuple1, tuple2, doc1, doc1, str(1.0)])
+					
 										
 		f.close()
 		
@@ -470,6 +482,7 @@ class LSAAlgo():
 		#Save the documents MyDict and directLookup MyDict for later reference
 		documents.save('%s/%s/%s.dict' % (self.dataDir, self.dataSaveDir, self.documentsFileName))
 		directLookup.save('%s/%s/%s.dict' % (self.dataDir, self.dataSaveDir, self.directLookupFileName))
+		reverseLookup.save('%s/%s/%s.dict' % (self.dataDir, self.dataSaveDir, self.reverseLookupFileName))
 		
 		#Build the dictionary and corpus on disk from the documents.
 		texts = [documents[key] for key in documents.keys()]
